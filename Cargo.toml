@@ -1,0 +1,20 @@
+[package]
+name = "ghost-code"
+version = "0.6.2"
+edition = "2021"
+description = "Ghostty + Claude Code Telegram integration — notifications, streaming chat, and terminal injection"
+license = "MIT"
+repository = "https://github.com/sunoj/ghost-code"
+keywords = ["telegram", "claude-code", "ghostty", "hooks"]
+categories = ["command-line-utilities"]
+exclude = ["CLAUDE.md", "test.sh", "test_hook.sh", "install.sh", ".env.example"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+libc = "0.2"
+
+[profile.release]
+strip = true
+lto = true

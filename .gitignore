@@ -1,0 +1,8 @@
+target/
+*.env
+!.env.example
+ghost-code.debug.log
+ghost-code.pid
+ghost-code-response*.json
+ghost-code-sessions.json
+.DS_Store
