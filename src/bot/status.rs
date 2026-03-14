@@ -17,17 +17,16 @@ pub(super) fn write_status(path: &std::path::Path, _config: &Config, running: bo
         "host": hook::short_hostname(),
         "today_cost": usage.cost_usd,
         "plan": plan_str,
-        "rtk": fetch_rtk_summary(),
-        "ws": fetch_ws_summary(),
+        "ai": fetch_ai_summary(),
     });
 
     std::fs::write(path, serde_json::to_string(&status).unwrap_or_default()).ok();
 }
 
-/// Run `rtk gain -f json` and return a compact summary string like "80% 3.6M".
-fn fetch_rtk_summary() -> String {
-    let output = Command::new("rtk")
-        .args(["gain", "-f", "json"])
+/// Run `ai-summary stats --json` and compute today's compact summary like "80% 51.0K".
+fn fetch_ai_summary() -> String {
+    let output = Command::new("ai-summary")
+        .args(["stats", "--json"])
         .stdin(std::process::Stdio::null())
         .output()
         .ok();
@@ -35,45 +34,43 @@ fn fetch_rtk_summary() -> String {
         return String::new();
     };
     let data: Value = serde_json::from_slice(&output.stdout).unwrap_or_default();
-    let saved = data["summary"]["total_saved"].as_f64().unwrap_or(0.0);
-    let pct = data["summary"]["avg_savings_pct"].as_f64().unwrap_or(0.0);
-    if saved < 1.0 {
-        return String::new();
-    }
-    format!("{:.0}% {}", pct, format_tokens(saved as u64))
-}
-
-/// Run `websummary stats` and parse the text output for a compact summary like "93% 3.3K".
-fn fetch_ws_summary() -> String {
-    let output = Command::new("websummary")
-        .args(["stats"])
-        .stdin(std::process::Stdio::null())
-        .output()
-        .ok();
-    let Some(output) = output.filter(|o| o.status.success()) else {
+    let Some(history) = data["history"].as_array() else {
         return String::new();
     };
-    let text = String::from_utf8_lossy(&output.stdout);
-    let mut compression = String::new();
-    let mut saved = String::new();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(v) = trimmed.strip_prefix("Compression:") {
-            compression = v.trim().to_string();
-        } else if let Some(v) = trimmed.strip_prefix("Claude tokens saved:") {
-            saved = v.trim().trim_start_matches('~').to_string();
+
+    // Filter to today's entries
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let today_start = now - (now % 86400); // UTC midnight
+
+    let mut total_raw: u64 = 0;
+    let mut total_summary: u64 = 0;
+    let mut total_saved: u64 = 0;
+    for entry in history {
+        let ts = entry["timestamp"].as_u64().unwrap_or(0);
+        if ts >= today_start {
+            total_raw += entry["raw_chars"].as_u64().unwrap_or(0);
+            total_summary += entry["summary_chars"].as_u64().unwrap_or(0);
+            total_saved += entry["estimated_saved"].as_u64().unwrap_or(0);
         }
     }
-    if compression.is_empty() && saved.is_empty() {
+    if total_saved == 0 {
         return String::new();
     }
-    if !compression.is_empty() && !saved.is_empty() {
-        format!("{compression} {saved}")
-    } else if !compression.is_empty() {
-        compression
+    let compression = if total_raw > 0 {
+        100.0 * (1.0 - total_summary as f64 / total_raw as f64)
     } else {
-        saved
-    }
+        0.0
+    };
+    let cost_saved = total_saved as f64 * 3.0 / 1_000_000.0;
+    format!(
+        "{:.0}% {} ${:.2}",
+        compression,
+        format_tokens(total_saved),
+        cost_saved,
+    )
 }
 
 pub(super) fn format_tokens(n: u64) -> String {

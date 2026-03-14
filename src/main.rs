@@ -53,7 +53,7 @@ fn main() {
 }
 
 /// Print statusline: session data from stdin + pre-computed data from status file.
-/// Format: 🤖 Opus 4.6 | 💰 $5 / $463 today | 📊 82% block · 38% weekly | 🧠 25% | 🔧 RTK 80% 3.6M | 🌐 WS 93% 3.3K | 📡 TG
+/// Format: 🤖 Opus 4.6 | 💰 $5 / $463 today | 📊 82% block · 38% weekly | 🧠 25% | 🌐 AIS 80% 51.0K $0.15 | 📡 TG
 fn print_statusline() {
     use std::io::Read;
 
@@ -98,16 +98,10 @@ fn print_statusline() {
         parts.push(format!("\u{1f9e0} {:.0}%", pct));
     }
 
-    // 🔧 RTK token savings
-    let rtk_str = parsed["rtk"].as_str().unwrap_or("");
-    if !rtk_str.is_empty() {
-        parts.push(format!("\u{1f527} RTK {rtk_str}"));
-    }
-
-    // 🌐 Websummary savings
-    let ws_str = parsed["ws"].as_str().unwrap_or("");
-    if !ws_str.is_empty() {
-        parts.push(format!("\u{1f310} WS {ws_str}"));
+    // 🌐 AI Summary savings
+    let ai_str = parsed["ai"].as_str().unwrap_or("");
+    if !ai_str.is_empty() {
+        parts.push(format!("\u{1f310} AIS {ai_str}"));
     }
 
     // 📡 Bot status

@@ -27,7 +27,7 @@ src/
     └── streaming.rs # Claude CLI streaming output
 ```
 
-Hook handlers use a fast spool-to-disk path (no config load, no network) so Claude Code is never blocked. The bot daemon processes spool files asynchronously.
+Hook handlers use a fast spool-to-disk path (no config load, no network) so Claude Code is never blocked. The bot daemon processes spool files asynchronously. Only sessions running inside Ghostty (`TERM_PROGRAM=ghostty`) are processed — non-Ghostty sessions (e.g. `aid` agents, other terminals) are silently skipped at the hook entry point.
 
 ## Screen Lock Handling
 

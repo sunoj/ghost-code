@@ -33,14 +33,22 @@ pub(crate) const CONSOLIDATION_WINDOW_SECS: u64 = 300;
 // ── Fast hook handlers (called by main.rs, must return ASAP) ──────
 
 /// Spool a stop or notification event to disk and return immediately.
+/// Only processes events from Ghostty terminals.
 pub fn spool_and_exit(event_type: &str) {
+    if !is_ghostty() {
+        return;
+    }
     let input = read_stdin_raw();
     let tty = parent_tty();
     write_spool(event_type, &input, &tty, None);
 }
 
 /// Handle pre-tool-use: spool the event, then poll for daemon's response.
+/// Only processes events from Ghostty terminals.
 pub fn handle_pre_tool_use(config: &Config) {
+    if !is_ghostty() {
+        return;
+    }
     let input = read_stdin_raw();
     let data: Value = serde_json::from_str(&input).unwrap_or(json!({}));
     let tool_name = data["tool_name"].as_str().unwrap_or("");
@@ -158,6 +166,15 @@ fn parent_tty() -> String {
         return String::new();
     }
     tty
+}
+
+// ── Terminal detection ─────────────────────────────────────────────
+
+/// Check if the current session is running inside Ghostty.
+fn is_ghostty() -> bool {
+    std::env::var("TERM_PROGRAM")
+        .map(|v| v.eq_ignore_ascii_case("ghostty"))
+        .unwrap_or(false)
 }
 
 // ── Utilities ─────────────────────────────────────────────────────
