@@ -18,6 +18,7 @@ pub(super) fn write_status(path: &std::path::Path, _config: &Config, running: bo
         "today_cost": usage.cost_usd,
         "plan": plan_str,
         "ai": fetch_ai_summary(),
+        "aid": fetch_aid_summary(),
     });
 
     std::fs::write(path, serde_json::to_string(&status).unwrap_or_default()).ok();
@@ -71,6 +72,73 @@ fn fetch_ai_summary() -> String {
         format_tokens(total_saved),
         cost_saved,
     )
+}
+
+/// Run `aid board --today` and `aid board --running` to build a compact summary like "2▶ 117✓ $464".
+fn fetch_aid_summary() -> String {
+    let parse_summary = |args: &[&str]| -> Option<(u64, u64, u64, f64)> {
+        let output = Command::new("aid")
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        // First line: "Tasks: 184 total | 117 done | 2 running | 65 failed"
+        let first = text.lines().next()?;
+        let mut total = 0u64;
+        let mut done = 0u64;
+        let mut running = 0u64;
+        let mut failed = 0u64;
+        for part in first.split('|') {
+            let part = part.trim();
+            if let Some(n) = part.strip_suffix(" total") {
+                total = n.trim_start_matches("Tasks: ").trim().parse().unwrap_or(0);
+            } else if let Some(n) = part.strip_suffix(" done") {
+                done = n.trim().parse().unwrap_or(0);
+            } else if let Some(n) = part.strip_suffix(" running") {
+                running = n.trim().parse().unwrap_or(0);
+            } else if let Some(n) = part.strip_suffix(" failed") {
+                failed = n.trim().parse().unwrap_or(0);
+            }
+        }
+        // Second line: "Total tokens: 122.7M  Cost: $464.10"
+        let mut cost = 0.0f64;
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("Total tokens:") {
+                if let Some(cost_part) = rest.split("Cost:").nth(1) {
+                    cost = cost_part.trim().trim_start_matches('$').parse().unwrap_or(0.0);
+                }
+            }
+        }
+        let _ = failed;
+        Some((total, done, running, cost))
+    };
+
+    // Get today's stats
+    let Some((total, done, _running_today, cost)) = parse_summary(&["board", "--today"]) else {
+        return String::new();
+    };
+    if total == 0 {
+        return String::new();
+    }
+
+    // Get currently running count
+    let running = parse_summary(&["board", "--running"])
+        .map(|(r, _, _, _)| r)
+        .unwrap_or(0);
+
+    let mut parts = Vec::new();
+    if running > 0 {
+        parts.push(format!("{running}\u{23f3}"));
+    }
+    parts.push(format!("{done}\u{2713}"));
+    let cost_str = crate::usage::format_cost(cost);
+    parts.push(cost_str);
+    parts.join(" ")
 }
 
 pub(super) fn format_tokens(n: u64) -> String {

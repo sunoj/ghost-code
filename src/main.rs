@@ -53,7 +53,7 @@ fn main() {
 }
 
 /// Print statusline: session data from stdin + pre-computed data from status file.
-/// Format: 🤖 Opus 4.6 | 💰 $5 / $463 today | 📊 82% block · 38% weekly | 🧠 25% | 🌐 AIS 80% 51.0K $0.15 | 📡 TG
+/// Format: 🤖 Opus 4.6 | 💰 $5 / $463 today | 📊 82% block · 38% weekly | 🧠 25% | 🌐 AIS 80% 51.0K $0.15 | 🔧 AID 2▶ 117✓ $464 | 📡 TG
 fn print_statusline() {
     use std::io::Read;
 
@@ -102,6 +102,12 @@ fn print_statusline() {
     let ai_str = parsed["ai"].as_str().unwrap_or("");
     if !ai_str.is_empty() {
         parts.push(format!("\u{1f310} AIS {ai_str}"));
+    }
+
+    // 🔧 AID stats: running/done/cost today
+    let aid_str = parsed["aid"].as_str().unwrap_or("");
+    if !aid_str.is_empty() {
+        parts.push(format!("\u{1f527} AID {aid_str}"));
     }
 
     // 📡 Bot status
