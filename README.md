@@ -150,7 +150,7 @@ When Claude tries to use a listed tool, you'll receive a Telegram message with A
 The statusline hook adds a real-time status bar to Claude Code showing:
 
 ```
-🤖 Opus 4.6 | 💰 $5 / $463 today | 📊 82% block · 38% weekly | 🧠 25% | 🌐 AIS 80% 51.0K $0.15 | 📡 TG
+🤖 Opus 4.6 | 💰 $5 / $463 today | 📊 82% block · 38% weekly | 🧠 25% | 🌐 AIS 80% 51.0K $0.15 | 🔧 AID 2⏳ 117✓ $464 | 📡 TG
 ```
 
 | Component | Source | Description |
@@ -160,9 +160,10 @@ The statusline hook adds a real-time status bar to Claude Code showing:
 | 📊 Plan | Anthropic API | Block (5h) and weekly usage with reset times |
 | 🧠 Context | Claude Code session | Context window usage percentage |
 | 🌐 AIS | `ai-summary stats` | Token savings and cost saved from [ai-summary](https://github.com/sunoj/ai-summary) (auto-detected) |
+| 🔧 AID | `aid board` | Today's [aid](https://github.com/sunoj/ai-dispatch) task stats: running, completed, cost (auto-detected) |
 | 📡 TG | Bot daemon | Telegram bot status |
 
-**Auto-detection**: ai-summary stats are shown only if the tool is installed. If the `ai-summary` command is not found, the section is silently omitted.
+**Auto-detection**: ai-summary and aid stats are shown only if the respective tools are installed. If a tool is not found, its section is silently omitted.
 
 ### Enabling / disabling
 
