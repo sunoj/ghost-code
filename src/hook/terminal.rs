@@ -97,21 +97,10 @@ pub fn atomic_inject(tty: &str, text: &str, restore_title: &str) -> Result<(), S
         return Err(SCREEN_LOCKED_ERR.to_string());
     }
 
-    // Copy text to clipboard
-    {
-        use std::io::Write;
-        let mut child = std::process::Command::new("pbcopy")
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("pbcopy: {e}"))?;
-        child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| "pbcopy stdin unavailable".to_string())?
-            .write_all(text.as_bytes())
-            .map_err(|e| format!("pbcopy write: {e}"))?;
-        child.wait().map_err(|e| format!("pbcopy wait: {e}"))?;
-    }
+    // Escape text for embedding in AppleScript string literal.
+    // The clipboard is set inside the AppleScript, immediately before Cmd+V,
+    // to eliminate the race window where an external process could overwrite it.
+    let escaped_text = escape_applescript(text);
 
     let marker = generate_marker();
 
@@ -120,7 +109,7 @@ pub fn atomic_inject(tty: &str, text: &str, restore_title: &str) -> Result<(), S
         set_tab_title(tty, &marker);
         std::thread::sleep(std::time::Duration::from_millis(delay));
 
-        match run_find_and_inject(&marker) {
+        match run_find_and_inject(&marker, &escaped_text) {
             Ok(true) => {
                 eprintln!(
                     "[atomic_inject] ok (attempt {}, marker={marker}, {} chars)",
@@ -152,7 +141,7 @@ pub fn atomic_inject(tty: &str, text: &str, restore_title: &str) -> Result<(), S
     set_tab_title(tty, &marker);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    match run_find_and_inject(&marker) {
+    match run_find_and_inject(&marker, &escaped_text) {
         Ok(true) => {
             eprintln!("[atomic_inject] ok (after activate, marker={marker})");
             if !restore_title.is_empty() {
@@ -165,6 +154,20 @@ pub fn atomic_inject(tty: &str, text: &str, restore_title: &str) -> Result<(), S
     }
 }
 
+/// Escape a string for safe embedding inside an AppleScript double-quoted string literal.
+/// Backslashes and double quotes must be escaped; other characters (including Unicode) pass through.
+fn escape_applescript(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 fn generate_marker() -> String {
     let mut buf = [0u8; 4];
     if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
@@ -173,8 +176,9 @@ fn generate_marker() -> String {
     format!("GC-{:08x}", u32::from_le_bytes(buf))
 }
 
-/// Single AppleScript: search all Ghostty windows/tabs for marker, click, paste, Enter.
-fn run_find_and_inject(marker: &str) -> Result<bool, String> {
+/// Single AppleScript: search all Ghostty windows/tabs for marker, set clipboard, click, paste, Enter.
+/// The clipboard is set inside the script to minimize the race window with external clipboard writes.
+fn run_find_and_inject(marker: &str, escaped_text: &str) -> Result<bool, String> {
     let script = format!(
         r#"tell application "Ghostty" to activate
 delay 0.3
@@ -215,6 +219,7 @@ tell application "System Events"
                     delay 0.2
                 end if
                 delay 0.2
+                set the clipboard to "{escaped_text}"
                 keystroke "v" using command down
                 delay 0.3
                 key code 36
@@ -227,6 +232,7 @@ tell application "System Events"
             set winTitle to title of window 1
             if winTitle contains "{marker}" then
                 delay 0.2
+                set the clipboard to "{escaped_text}"
                 keystroke "v" using command down
                 delay 0.3
                 key code 36
