@@ -145,12 +145,13 @@ fn ensure_bot_quick() {
         drop(file);
     }
 
-    // Kill any stale ghost-code bot processes before spawning a new one
-    let _ = std::process::Command::new("pkill")
-        .args(["-f", "ghost-code bot"])
-        .output();
-    // Brief pause to let old process exit
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Read stale PID and kill it specifically before spawning a new daemon
+    if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
+        if let Ok(pid) = pid_str.trim().parse::<i32>() {
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
 
     let binary = hooks_dir.join("ghost-code");
     let log_file = hooks_dir.join("ghost-code.log");
