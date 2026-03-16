@@ -185,7 +185,14 @@ pub(crate) fn lock_file(path: &std::path::Path) -> Option<std::fs::File> {
         .write(true)
         .open(path)
         .ok()?;
-    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    if rc != 0 {
+        eprintln!(
+            "[lock] flock failed: {} (path={})",
+            std::io::Error::last_os_error(),
+            path.display()
+        );
+    }
     Some(file)
 }
 

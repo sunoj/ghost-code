@@ -269,7 +269,8 @@ fn process_spool_files(config: &Config, spool_dir: &std::path::Path) {
 
         let spool: Value = match serde_json::from_str(&content) {
             Ok(v) => v,
-            Err(_) => {
+            Err(e) => {
+                eprintln!("{} [spool] parse error: {} (file={})", ts(), e, path.display());
                 let stale = entry.metadata()
                     .and_then(|m| m.modified())
                     .ok()
