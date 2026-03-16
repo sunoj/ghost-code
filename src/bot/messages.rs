@@ -100,6 +100,7 @@ fn handle_injection(config: &Config, msg: &Value, text: &str, entry: &Value) {
     let session = entry["session_id"].as_str().unwrap_or("?");
     let project = entry["project"].as_str().unwrap_or("?");
     let tty = entry["tty"].as_str().unwrap_or("");
+    let tab_index = entry["tab_index"].as_i64().unwrap_or(0);
     let user_msg_id = msg["message_id"].as_i64();
 
     let _ = telegram::call(
@@ -109,7 +110,10 @@ fn handle_injection(config: &Config, msg: &Value, text: &str, entry: &Value) {
         15,
     );
 
-    eprintln!("{} [inject] session={session} project={project} tty={tty}", super::ts());
+    eprintln!(
+        "{} [inject] session={session} project={project} tab_index={tab_index} tty={tty}",
+        super::ts()
+    );
 
     let confirm = format!("\u{27a1}\u{fe0f} <b>{}</b>", telegram::escape_html(project));
     let confirm_msg_id = telegram::send_html_silent(&config.bot_token, &config.chat_id, &confirm, user_msg_id);

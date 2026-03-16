@@ -305,7 +305,9 @@ end tell"#,
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
         if !window_title.is_empty() && window_title.contains(tab_title) {
-            eprintln!("[detect_tab] single window fallback (verified via window title), expected={tab_title:?}");
+            eprintln!(
+                "[detect_tab] single window fallback (verified via window title), expected={tab_title:?}, window_title={window_title:?}"
+            );
             return (1, String::new());
         }
         if !window_title.is_empty() {

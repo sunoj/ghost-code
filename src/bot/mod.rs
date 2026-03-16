@@ -12,6 +12,7 @@ use crate::config::Config;
 use crate::hook;
 use crate::telegram;
 use serde_json::{json, Value};
+use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -291,8 +292,19 @@ fn process_spool_files(config: &Config, spool_dir: &std::path::Path) {
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or(json!({}));
         let tty = spool["tty"].as_str().unwrap_or("");
+        let session_id = data["session_id"].as_str().unwrap_or("");
+        let project_short = data["cwd"]
+            .as_str()
+            .and_then(|cwd| Path::new(cwd).file_name().map(|n| n.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "unknown".to_string());
 
-        eprintln!("{} [spool] processing: type={event_type}", ts());
+        eprintln!(
+            "{} [spool] processing: type={} session_id={} project={}",
+            ts(),
+            event_type,
+            session_id,
+            project_short
+        );
 
         match event_type {
             "stop" => hook::process_stop(config, &data, tty),

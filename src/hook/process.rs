@@ -10,6 +10,8 @@ pub fn process_stop(config: &Config, data: &Value, tty: &str) {
     let session_id = data["session_id"].as_str().unwrap_or("");
     let project = super::format::project_name(data);
 
+    eprintln!("[spool:stop] session_id={} project={}", session_id, project);
+
     if !session_id.is_empty() {
         if let Some((poll_msg_id, html)) = super::session::consume_poll_sent(config, session_id) {
             let updated = html

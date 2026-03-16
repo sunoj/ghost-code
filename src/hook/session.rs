@@ -85,6 +85,15 @@ pub fn save_session_mapping(config: &Config, msg_id: Option<i64>, data: &Value, 
             "ts": ts,
         }),
     );
+
+    eprintln!(
+        "[session] saved mapping msg_id={} session={} project={} tab_index={} tty={}",
+        msg_id,
+        short_id,
+        project,
+        tab_index,
+        tty,
+    );
     if map.len() > MAX_SESSIONS {
         let mut keys: Vec<i64> = map.keys().filter_map(|k| k.parse().ok()).collect();
         keys.sort();
