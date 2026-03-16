@@ -6,8 +6,6 @@ use crate::hook;
 use crate::telegram;
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::process::Command;
-
 pub(super) fn handle_message(config: &mut Config, msg: &Value) {
     let chat_id = msg["chat"]["id"]
         .as_i64()
@@ -111,14 +109,7 @@ fn handle_injection(config: &Config, msg: &Value, text: &str, entry: &Value) {
         15,
     );
 
-    let tab_index = if !tty.is_empty() {
-        let (idx, _) = hook::detect_tab_by_tty(tty);
-        idx
-    } else {
-        let stored = entry["tab_index"].as_i64().unwrap_or(0);
-        if stored > 0 { stored } else { hook::detect_tab_index(tab_title).0 }
-    };
-    eprintln!("{} [inject] session={session} project={project} tab_index={tab_index} tty={tty}", super::ts());
+    eprintln!("{} [inject] session={session} project={project} tty={tty}", super::ts());
 
     let confirm = format!("\u{27a1}\u{fe0f} <b>{}</b>", telegram::escape_html(project));
     let confirm_msg_id = telegram::send_html_silent(&config.bot_token, &config.chat_id, &confirm, user_msg_id);
@@ -128,7 +119,7 @@ fn handle_injection(config: &Config, msg: &Value, text: &str, entry: &Value) {
         hook::clone_session_mapping(config, cmid, entry);
     }
 
-    match inject_to_ghostty(text, tab_index, tab_title) {
+    match hook::atomic_inject(tty, text, tab_title) {
         Ok(_) => {
             eprintln!("{} [inject] ok, text injected ({} chars)", super::ts(), text.len());
             if let Some(mid) = user_msg_id {
@@ -144,7 +135,7 @@ fn handle_injection(config: &Config, msg: &Value, text: &str, entry: &Value) {
             }
         }
         Err(e) => {
-            let is_locked = e == SCREEN_LOCKED_ERR;
+            let is_locked = e == hook::SCREEN_LOCKED_ERR;
             eprintln!("{} [inject] failed: {e} (screen_locked={is_locked})", super::ts());
             let (icon, detail) = if is_locked {
                 ("\u{1f512}", "Screen locked — unlock and resend")
@@ -166,91 +157,6 @@ fn handle_injection(config: &Config, msg: &Value, text: &str, entry: &Value) {
                 );
             }
         }
-    }
-}
-
-/// Check if macOS screen is locked via ioreg.
-pub(super) fn is_screen_locked() -> bool {
-    Command::new("ioreg")
-        .args(["-n", "Root", "-d1"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("\"CGSSessionScreenIsLocked\" = Yes"))
-        .unwrap_or(false)
-}
-
-pub(super) const SCREEN_LOCKED_ERR: &str = "SCREEN_LOCKED";
-
-pub(super) fn inject_to_ghostty(text: &str, tab_index: i64, tab_title: &str) -> Result<(), String> {
-    if is_screen_locked() {
-        return Err(SCREEN_LOCKED_ERR.to_string());
-    }
-
-    use std::io::Write;
-    let mut child = Command::new("pbcopy")
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("pbcopy: {e}"))?;
-    child
-        .stdin
-        .as_mut()
-        .ok_or_else(|| "pbcopy stdin unavailable".to_string())?
-        .write_all(text.as_bytes())
-        .map_err(|e| format!("pbcopy write: {e}"))?;
-    child.wait().map_err(|e| format!("pbcopy wait: {e}"))?;
-
-    if tab_index < 1 {
-        return Err(format!("tab_index={tab_index} — tab not found (title may have been overridden)"));
-    }
-
-    let script = format!(
-        r#"tell application "Ghostty" to activate
-delay 0.5
-tell application "System Events"
-    tell process "Ghostty"
-        set maxWait to 6
-        repeat while (count of windows) is 0 and maxWait > 0
-            delay 0.5
-            set maxWait to maxWait - 1
-        end repeat
-        if (count of windows) is 0 then
-            error "Ghostty has no windows"
-        end if
-        tell window 1
-            try
-                tell (first tab group)
-                    set tabCount to count of radio buttons
-                    if tabCount > 1 then
-                        click radio button {tab_index}
-                    end if
-                end tell
-            end try
-        end tell
-        delay 0.2
-        keystroke "v" using command down
-        delay 0.3
-        key code 36
-    end tell
-end tell"#
-    );
-
-    eprintln!("{} [inject] tab {tab_index} ({tab_title:?}), pasting {} chars", super::ts(), text.len());
-
-    let output = Command::new("osascript")
-        .args(["-e", &script])
-        .output()
-        .map_err(|e| format!("{e}"))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.contains("no windows") || stderr.contains("-2700") {
-            if is_screen_locked() {
-                return Err(SCREEN_LOCKED_ERR.to_string());
-            }
-        }
-        Err(stderr)
     }
 }
 

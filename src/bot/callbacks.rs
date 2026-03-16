@@ -109,19 +109,13 @@ fn handle_plan_approval(config: &Config, action: &str, cb_id: &str, cb_msg_id: i
         } else {
             let tty = entry["tty"].as_str().unwrap_or("");
             let tab_title = entry["tab_title"].as_str().unwrap_or("");
-            let tab_index = if !tty.is_empty() {
-                hook::detect_tab_by_tty(tty).0
-            } else {
-                let stored = entry["tab_index"].as_i64().unwrap_or(0);
-                if stored > 0 { stored } else { hook::detect_tab_index(tab_title).0 }
-            };
-            match super::messages::inject_to_ghostty(inject_text, tab_index, tab_title) {
+            match hook::atomic_inject(tty, inject_text, tab_title) {
                 Ok(_) => {
-                    eprintln!("{} [plan] injected '{inject_text}' → tab {tab_index}", super::ts());
+                    eprintln!("{} [plan] injected '{inject_text}' → tty={tty}", super::ts());
                     injected = true;
                 }
                 Err(e) => {
-                    let is_locked = e == super::messages::SCREEN_LOCKED_ERR;
+                    let is_locked = e == hook::SCREEN_LOCKED_ERR;
                     eprintln!("{} [plan] injection failed: {e} (screen_locked={is_locked})", super::ts());
                     if is_locked {
                         // Keep inline keyboard for retry, just notify

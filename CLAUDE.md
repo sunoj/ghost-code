@@ -16,7 +16,7 @@ src/
 │   ├── format.rs    # Text extraction, formatting, hostname
 │   ├── process.rs   # Stop/notification/pre-tool-use processors
 │   ├── session.rs   # Session mapping, pending replies, consolidation
-│   └── terminal.rs  # Ghostty tab detection and title management
+│   └── terminal.rs  # Ghostty tab detection, atomic inject, title management
 └── bot/             # Telegram bot daemon
     ├── mod.rs       # Daemon lifecycle, signal handling, spool processing
     ├── callbacks.rs # Callback query handler (approvals)
@@ -28,6 +28,16 @@ src/
 ```
 
 Hook handlers use a fast spool-to-disk path (no config load, no network) so Claude Code is never blocked. The bot daemon processes spool files asynchronously. Only sessions running inside Ghostty (`TERM_PROGRAM=ghostty`) are processed — non-Ghostty sessions (e.g. `aid` agents, other terminals) are silently skipped at the hook entry point.
+
+## Tab Detection & Injection
+
+Terminal injection uses an **atomic find-and-inject** approach to prevent sending text to the wrong tab:
+
+1. A unique marker title (`GC-xxxxxxxx`) is set on the target tty via OSC 2 escape sequence
+2. A single AppleScript iterates **all windows and all tabs** (via Accessibility API radio button list), finds the tab whose title contains the marker, clicks it, and pastes — all in one script execution
+3. The tab title is restored after successful injection
+
+This eliminates the TOCTOU race (detect index, then click by index) and the fragile `split(", ")` parsing of AppleScript list output that previously caused wrong-tab injections.
 
 ## Screen Lock Handling
 

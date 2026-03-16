@@ -14,7 +14,7 @@ pub use session::{
     clone_session_mapping, consume_pending_reply, has_pending_reply, load_session_mapping,
     save_pending_reply, save_poll_sent, save_session_mapping,
 };
-pub use terminal::{detect_tab_by_tty, detect_tab_index};
+pub use terminal::{atomic_inject, SCREEN_LOCKED_ERR};
 
 use crate::config::Config;
 use serde_json::{json, Value};

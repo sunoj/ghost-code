@@ -1,6 +1,6 @@
 [package]
 name = "ghost-code"
-version = "0.6.4"
+version = "0.6.5"
 edition = "2021"
 description = "Ghostty + Claude Code Telegram integration — notifications, streaming chat, and terminal injection"
 license = "MIT"
