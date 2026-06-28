@@ -82,6 +82,15 @@ pub fn process_stop(config: &Config, data: &Value, tty: &str) {
     eprintln!("[spool:stop] done, tg_msg_id={msg_id:?}");
 }
 
+/// Generic notification text that carries no real content and should be
+/// enriched from the transcript (e.g. "Claude needs your permission").
+fn is_generic_notification(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("needs your permission")
+        || lower.contains("needs your attention")
+        || lower.contains("waiting for")
+}
+
 pub fn process_notification(config: &Config, data: &Value, tty: &str) {
     super::debug_log(config, "notification", data);
     let session_id = data["session_id"].as_str().unwrap_or("");
@@ -114,6 +123,23 @@ pub fn process_notification(config: &Config, data: &Value, tty: &str) {
         }
         return;
     }
+
+    // Notification payloads carry only generic text ("Claude needs your
+    // permission" / "...waiting for input") — never the actual prompt. Enrich
+    // from the transcript's last assistant message so Telegram shows what
+    // Claude actually asked, mirroring process_stop.
+    let message = if is_generic_notification(&message) {
+        data["transcript_path"]
+            .as_str()
+            .and_then(|path| {
+                super::format::get_pending_question(path)
+                    .or_else(|| super::format::get_transcript_summary(path))
+            })
+            .map(|content| format!("{message}\n\n{content}"))
+            .unwrap_or(message)
+    } else {
+        message
+    };
 
     let mut body_part = String::new();
     if !title.is_empty() {
