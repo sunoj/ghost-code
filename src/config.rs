@@ -12,8 +12,6 @@ pub struct Config {
     pub working_dir: String,
     pub timeout: u64,
     pub hooks_dir: PathBuf,
-    pub approval_tools: Vec<String>,
-    pub approval_timeout: u64,
 }
 
 pub fn load() -> Config {
@@ -43,17 +41,6 @@ pub fn load() -> Config {
             .or_else(|| file.get("CLAUDE_TIMEOUT").cloned())
             .and_then(|v| v.parse().ok())
             .unwrap_or(300),
-        approval_tools: env::var("APPROVAL_TOOLS")
-            .ok()
-            .or_else(|| file.get("APPROVAL_TOOLS").cloned())
-            .filter(|v| !v.is_empty())
-            .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
-            .unwrap_or_default(),
-        approval_timeout: env::var("APPROVAL_TIMEOUT")
-            .ok()
-            .or_else(|| file.get("APPROVAL_TIMEOUT").cloned())
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(120),
         hooks_dir,
     }
 }

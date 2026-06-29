@@ -5,6 +5,7 @@ mod bot;
 mod config;
 mod hook;
 mod plan_usage;
+mod setup;
 mod telegram;
 mod usage;
 
@@ -16,16 +17,6 @@ fn main() {
         "stop" | "notification" => {
             hook::spool_and_exit(&command);
             ensure_bot_quick();
-        }
-
-        // Pre-tool-use needs config (approval list) and blocks until decision.
-        "pre-tool-use" => {
-            let config = config::load();
-            if config.bot_token.is_empty() || config.chat_id.is_empty() {
-                return;
-            }
-            ensure_bot_quick();
-            hook::handle_pre_tool_use(&config);
         }
 
         "statusline" => {
@@ -42,13 +33,13 @@ fn main() {
             bot::run(config);
         }
 
-        "setup" => run_setup(),
+        "setup" => setup::run_setup(),
 
-        "test" => run_test(),
+        "test" => setup::run_test(),
 
         "--version" | "-V" => println!("ghost-code {}", env!("CARGO_PKG_VERSION")),
 
-        _ => eprintln!("Usage: ghost-code <stop|notification|pre-tool-use|statusline|bot|setup|test>"),
+        _ => eprintln!("Usage: ghost-code <stop|notification|statusline|bot|setup|test>"),
     }
 }
 
@@ -175,139 +166,4 @@ fn ensure_bot_quick() {
             }
         }
     }
-}
-
-/// Set up Claude Code hooks in ~/.claude/settings.json and create .env template.
-fn run_setup() {
-    let hooks_dir = hook::hooks_dir();
-    std::fs::create_dir_all(&hooks_dir).ok();
-
-    // Copy binary to hooks dir if not already there
-    let target = hooks_dir.join("ghost-code");
-    if let Ok(exe) = std::env::current_exe() {
-        if exe != target {
-            if let Err(e) = std::fs::copy(&exe, &target) {
-                eprintln!("Warning: could not copy binary to {}: {e}", target.display());
-            } else {
-                // Sign on macOS
-                #[cfg(target_os = "macos")]
-                {
-                    let _ = std::process::Command::new("codesign")
-                        .args(["--force", "--sign", "-", &target.to_string_lossy()])
-                        .output();
-                }
-                println!("Installed binary to {}", target.display());
-            }
-        }
-    }
-
-    // Create .env from template if missing
-    let env_file = hooks_dir.join("ghost-code.env");
-    if !env_file.exists() {
-        let template = "\
-# Telegram Bot Token (from @BotFather)\n\
-TELEGRAM_BOT_TOKEN=your-bot-token-here\n\
-\n\
-# Your Telegram Chat ID (from @userinfobot)\n\
-TELEGRAM_CHAT_ID=your-chat-id-here\n\
-\n\
-# Set to true to log raw hook data for debugging\n\
-DEBUG=false\n";
-        std::fs::write(&env_file, template).ok();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&env_file, std::fs::Permissions::from_mode(0o600)).ok();
-        }
-        println!("Created {} — edit it with your bot token and chat ID.", env_file.display());
-    } else {
-        println!("ghost-code.env already exists, skipping.");
-    }
-
-    // Merge hooks into settings.json
-    let settings_path = home_dir().join(".claude/settings.json");
-    let mut settings: serde_json::Value = std::fs::read_to_string(&settings_path)
-        .ok()
-        .and_then(|c| serde_json::from_str(&c).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-
-    let hooks = settings
-        .as_object_mut()
-        .unwrap()
-        .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}));
-
-    let binary_str = target.to_string_lossy();
-    let hook_defs = [
-        ("Stop", format!("{binary_str} stop")),
-        ("Notification", format!("{binary_str} notification")),
-        ("PreToolUse", format!("{binary_str} pre-tool-use")),
-        ("StatusLine", format!("{binary_str} statusline")),
-    ];
-
-    for (event, cmd) in &hook_defs {
-        let entries = hooks
-            .as_object_mut()
-            .unwrap()
-            .entry(*event)
-            .or_insert_with(|| serde_json::json!([]));
-        let arr = entries.as_array().unwrap_or(&vec![]).clone();
-
-        let already = arr.iter().any(|e| {
-            e["hooks"]
-                .as_array()
-                .map(|hs| hs.iter().any(|h| h["command"].as_str() == Some(cmd)))
-                .unwrap_or(false)
-        });
-
-        if !already {
-            let entry = serde_json::json!({"hooks": [{"type": "command", "command": cmd}]});
-            entries.as_array_mut().unwrap().push(entry);
-            println!("Added {event} hook.");
-        } else {
-            println!("{event} hook already configured.");
-        }
-    }
-
-    std::fs::write(
-        &settings_path,
-        serde_json::to_string_pretty(&settings).unwrap_or_default() + "\n",
-    )
-    .ok();
-
-    println!("\nSetup complete.");
-    println!("  1. Edit {} with your bot token and chat ID", env_file.display());
-    println!("  2. Run 'ghost-code test' to verify");
-}
-
-/// Send test messages to Telegram to verify the setup works.
-fn run_test() {
-    let config = config::load();
-    if config.bot_token.is_empty() || config.chat_id.is_empty() {
-        eprintln!("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in ~/.claude/hooks/ghost-code.env first.");
-        eprintln!("Run 'ghost-code setup' if you haven't yet.");
-        std::process::exit(1);
-    }
-
-    println!("Testing Stop hook...");
-    let stop_msg = format!(
-        "\u{1f916} <b>Claude Code \u{b7} test@{}</b>\n\n{}",
-        telegram::escape_html(&hook::short_hostname()),
-        "Refactored the swap router to support multi-hop paths. (test message)",
-    );
-    telegram::send_html_silent(&config.bot_token, &config.chat_id, &stop_msg, None);
-
-    println!("Testing Notification hook...");
-    let notif_msg = format!(
-        "\u{26a1} <b>Claude Code \u{b7} test@{}</b>\n\n{}",
-        telegram::escape_html(&hook::short_hostname()),
-        "Permission needed: cargo build (test message)",
-    );
-    telegram::send_html(&config.bot_token, &config.chat_id, &notif_msg, None, None);
-
-    println!("Done. Check Telegram for two test messages.");
-}
-
-fn home_dir() -> std::path::PathBuf {
-    std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
 }

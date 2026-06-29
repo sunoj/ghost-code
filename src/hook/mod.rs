@@ -9,7 +9,7 @@ pub mod terminal;
 
 // Re-export public API so callers use hook::function_name unchanged.
 pub use format::{project_name, short_hostname};
-pub use process::{process_notification, process_pre_tool_use, process_stop};
+pub use process::{process_notification, process_stop};
 pub use session::{
     clone_session_mapping, consume_pending_reply, has_pending_reply, load_session_mapping,
     save_pending_reply, save_poll_sent, save_session_mapping,
@@ -40,76 +40,21 @@ pub fn spool_and_exit(event_type: &str) {
     }
     let input = read_stdin_raw();
     let tty = parent_tty();
-    write_spool(event_type, &input, &tty, None);
-}
-
-/// Handle pre-tool-use: spool the event, then poll for daemon's response.
-/// Only processes events from Ghostty terminals.
-pub fn handle_pre_tool_use(config: &Config) {
-    if !is_ghostty() {
-        return;
-    }
-    let input = read_stdin_raw();
-    let data: Value = serde_json::from_str(&input).unwrap_or(json!({}));
-    let tool_name = data["tool_name"].as_str().unwrap_or("");
-    let session = data["session_id"].as_str().unwrap_or("?");
-
-    if config.approval_tools.is_empty()
-        || !config.approval_tools.iter().any(|t| t == tool_name)
-    {
-        eprintln!("[hook:pre-tool-use] session={session} tool={tool_name} -> skipped");
-        return;
-    }
-
-    eprintln!("[hook:pre-tool-use] session={session} tool={tool_name} -> requesting approval");
-    let request_id = generate_request_id();
-    let tty = parent_tty();
-    write_spool("pre-tool-use", &input, &tty, Some(&request_id));
-
-    let response_file = config
-        .hooks_dir
-        .join(format!("ghost-code-response-{request_id}.json"));
-    let deadline =
-        std::time::Instant::now() + std::time::Duration::from_secs(config.approval_timeout);
-
-    loop {
-        if std::time::Instant::now() > deadline {
-            eprintln!("[hook:pre-tool-use] timeout after {}s", config.approval_timeout);
-            println!("{}", json!({"decision": "deny", "reason": "Telegram approval timeout"}));
-            return;
-        }
-        if let Ok(content) = std::fs::read_to_string(&response_file) {
-            let _ = std::fs::remove_file(&response_file);
-            let decision = serde_json::from_str::<Value>(&content)
-                .ok()
-                .and_then(|v| v["response"].as_str().map(String::from))
-                .unwrap_or_else(|| "deny".to_string());
-            if decision == "allow" {
-                println!("{}", json!({"decision": "allow"}));
-            } else {
-                println!("{}", json!({"decision": "deny", "reason": "Denied via Telegram"}));
-            }
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
+    write_spool(event_type, &input, &tty);
 }
 
 // ── Spool I/O ─────────────────────────────────────────────────────
 
-fn write_spool(event_type: &str, raw_data: &str, tty: &str, request_id: Option<&str>) {
+fn write_spool(event_type: &str, raw_data: &str, tty: &str) {
     let spool_dir = hooks_dir().join(SPOOL_DIR_NAME);
     std::fs::create_dir_all(&spool_dir).ok();
     let ts = timestamp_ms();
-    let mut spool = json!({
+    let spool = json!({
         "type": event_type,
         "data_raw": raw_data,
         "timestamp_ms": ts,
         "tty": tty,
     });
-    if let Some(rid) = request_id {
-        spool["request_id"] = json!(rid);
-    }
     let pid = std::process::id();
     let filename = format!("{ts}-{pid}-{event_type}.json");
     let tmp = spool_dir.join(format!(".tmp.{filename}"));
@@ -142,16 +87,6 @@ pub(crate) fn timestamp_ms() -> u128 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0)
-}
-
-fn generate_request_id() -> String {
-    let millis = timestamp_ms();
-    let mut buf = [0u8; 4];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        let _ = f.read_exact(&mut buf);
-    }
-    let rand = u32::from_le_bytes(buf);
-    format!("{millis}-{rand:08x}")
 }
 
 fn parent_tty() -> String {

@@ -83,7 +83,6 @@ fn handle_poll_error(error: &str, consecutive_409: &mut u32) -> PollAction {
 
 pub fn run(mut config: Config) {
     let pid_file = config.hooks_dir.join("ghost-code.pid");
-    let response_file = config.hooks_dir.join("ghost-code-response.json");
 
     let _pid_lock = match try_lock_pid(&pid_file) {
         Some(f) => f,
@@ -102,9 +101,6 @@ pub fn run(mut config: Config) {
     eprintln!("{} [bot] chat_id={}", ts(), config.chat_id);
     eprintln!("{} [bot] working_dir={}", ts(), config.working_dir);
     eprintln!("{} [bot] timeout={}s", ts(), config.timeout);
-    if !config.approval_tools.is_empty() {
-        eprintln!("{} [bot] approval_tools={:?} (timeout={}s)", ts(), config.approval_tools, config.approval_timeout);
-    }
     eprintln!("{} [bot] debug={}", ts(), config.debug);
 
     let _ = telegram::call(&config.bot_token, "setMyCommands", &json!({
@@ -227,7 +223,7 @@ pub fn run(mut config: Config) {
             if update.get("message").is_some() {
                 messages::handle_message(&mut config, &update["message"]);
             } else if update.get("callback_query").is_some() {
-                callbacks::handle_callback(&config, &update["callback_query"], &response_file);
+                callbacks::handle_callback(&config, &update["callback_query"]);
             } else {
                 eprintln!("{} [poll] unknown update type: {}", ts(), serde_json::to_string(update).unwrap_or_default());
             }
@@ -315,10 +311,6 @@ fn process_spool_files(config: &Config, spool_dir: &std::path::Path) {
                 } else {
                     hook::process_notification(config, &data, tty);
                 }
-            }
-            "pre-tool-use" => {
-                let request_id = spool["request_id"].as_str().unwrap_or("");
-                hook::process_pre_tool_use(config, &data, request_id);
             }
             _ => eprintln!("{} [spool] unknown event type: {event_type}", ts()),
         }

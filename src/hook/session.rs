@@ -238,8 +238,6 @@ mod tests {
             working_dir: String::new(),
             timeout: 0,
             hooks_dir: dir.0.clone(),
-            approval_tools: Vec::new(),
-            approval_timeout: 0,
         };
         (dir, config)
     }

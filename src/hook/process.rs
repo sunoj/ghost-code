@@ -1,9 +1,9 @@
-// Spool event processors: stop, notification, and pre-tool-use.
+// Spool event processors: stop and notification.
 // Called by the bot daemon after reading spool files from disk.
 
 use crate::config::Config;
 use crate::telegram;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub fn process_stop(config: &Config, data: &Value, tty: &str) {
     super::debug_log(config, "stop", data);
@@ -194,25 +194,4 @@ pub fn process_notification(config: &Config, data: &Value, tty: &str) {
         }
     }
     eprintln!("[spool:notification] done, tg_msg_id={msg_id:?}");
-}
-
-pub fn process_pre_tool_use(config: &Config, data: &Value, request_id: &str) {
-    super::debug_log(config, "pre-tool-use", data);
-    let tool_name = data["tool_name"].as_str().unwrap_or("");
-    let project = super::format::project_name(data);
-    let tool_info = super::format::format_tool_info(tool_name, &data["tool_input"]);
-    let escaped_info = telegram::escape_html(&tool_info);
-
-    let msg = format!(
-        "\u{1f512} <b>Permission \u{b7} {}</b>\n\n<b>{}</b>\n<pre>{escaped_info}</pre>",
-        telegram::escape_html(&project),
-        telegram::escape_html(tool_name),
-    );
-    let reply_markup = json!({
-        "inline_keyboard": [[
-            {"text": "\u{2705} Allow", "callback_data": format!("allow:{request_id}")},
-            {"text": "\u{274c} Deny", "callback_data": format!("deny:{request_id}")},
-        ]]
-    });
-    telegram::send_html(&config.bot_token, &config.chat_id, &msg, Some(&reply_markup), None);
 }

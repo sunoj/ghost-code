@@ -1,13 +1,12 @@
-// Telegram callback query handler: plan approval and pre-tool-use approval.
-// Writes response files for hook handlers and injects decisions into Ghostty.
+// Telegram callback query handler: plan approval.
+// Injects the plan decision into the Ghostty terminal.
 
 use crate::config::Config;
 use crate::hook;
 use crate::telegram;
 use serde_json::{json, Value};
-use std::path::PathBuf;
 
-pub(super) fn handle_callback(config: &Config, cb: &Value, response_file: &PathBuf) {
+pub(super) fn handle_callback(config: &Config, cb: &Value) {
     let cb_chat_id = cb["message"]["chat"]["id"]
         .as_i64()
         .map(|v| v.to_string())
@@ -21,67 +20,15 @@ pub(super) fn handle_callback(config: &Config, cb: &Value, response_file: &PathB
     let cb_from = cb["from"]["first_name"].as_str().unwrap_or("?");
     let cb_msg_id = cb["message"]["message_id"].as_i64().unwrap_or(0);
 
-    let (action, request_id) = cb_data
-        .split_once(':')
-        .map(|(a, id)| (a, Some(id)))
-        .unwrap_or((cb_data, None));
-
-    eprintln!("{} [callback] from={cb_from} action={action} request={request_id:?} msg_id={cb_msg_id}", super::ts());
+    eprintln!("{} [callback] from={cb_from} action={cb_data} msg_id={cb_msg_id}", super::ts());
 
     super::refresh_caffeinate();
 
     // Plan approval: inject response into Ghostty terminal
-    if action == "plan_yes" || action == "plan_no" {
-        handle_plan_approval(config, action, cb_id, cb_msg_id);
-        return;
-    }
-
-    // PreToolUse approval: write response file
-    let resp = json!({"response": action});
-    let target = if let Some(id) = request_id {
-        if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-            eprintln!("{} [callback] invalid request_id: {id:?}", super::ts());
-            return;
-        }
-        response_file
-            .parent()
-            .unwrap_or(response_file)
-            .join(format!("ghost-code-response-{id}.json"))
+    if cb_data == "plan_yes" || cb_data == "plan_no" {
+        handle_plan_approval(config, cb_data, cb_id, cb_msg_id);
     } else {
-        response_file.clone()
-    };
-    std::fs::write(&target, serde_json::to_string(&resp).unwrap_or_default()).ok();
-    eprintln!("{} [callback] wrote response to {}", super::ts(), target.display());
-
-    let label = if action == "allow" { "Allowed" } else { "Denied" };
-    let _ = telegram::call(
-        &config.bot_token,
-        "answerCallbackQuery",
-        &json!({"callback_query_id": cb_id, "text": label}),
-        15,
-    );
-
-    if let (Ok(chat_id), Some(msg_id)) = (
-        cb_chat_id.parse::<i64>(),
-        cb["message"]["message_id"].as_i64(),
-    ) {
-        let _ = telegram::call(
-            &config.bot_token,
-            "editMessageReplyMarkup",
-            &json!({"chat_id": chat_id, "message_id": msg_id}),
-            15,
-        );
-        let emoji = if action == "allow" { "\u{2705}" } else { "\u{274c}" };
-        let _ = telegram::call(
-            &config.bot_token,
-            "sendMessage",
-            &json!({
-                "chat_id": chat_id,
-                "text": format!("{emoji} {label}"),
-                "reply_parameters": {"message_id": msg_id},
-            }),
-            15,
-        );
+        eprintln!("{} [callback] ignoring unknown action: {cb_data}", super::ts());
     }
 }
 

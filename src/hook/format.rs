@@ -176,27 +176,6 @@ fn format_ask_question(content: &[Value]) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-pub fn format_tool_info(tool_name: &str, input: &Value) -> String {
-    let text = match tool_name {
-        "Bash" => input["command"]
-            .as_str()
-            .unwrap_or("(no command)")
-            .to_string(),
-        "Edit" | "Write" => {
-            let path = input["file_path"].as_str().unwrap_or("?");
-            format!("{tool_name}: {path}")
-        }
-        _ => serde_json::to_string_pretty(input)
-            .unwrap_or_else(|_| "(unknown)".to_string()),
-    };
-    if text.len() > 500 {
-        let end = crate::telegram::char_floor(&text, 497);
-        format!("{}…", &text[..end])
-    } else {
-        text
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,25 +268,5 @@ mod tests {
     fn format_ask_question_none_without_tool() {
         let content = vec![json!({"type": "text", "text": "hi"})];
         assert_eq!(format_ask_question(&content), None);
-    }
-
-    #[test]
-    fn format_tool_info_bash() {
-        let input = json!({"command": "ls -la"});
-        assert_eq!(format_tool_info("Bash", &input), "ls -la");
-    }
-
-    #[test]
-    fn format_tool_info_edit() {
-        let input = json!({"file_path": "/src/main.rs"});
-        assert_eq!(format_tool_info("Edit", &input), "Edit: /src/main.rs");
-    }
-
-    #[test]
-    fn format_tool_info_truncates_long() {
-        let input = json!({"command": "x".repeat(600)});
-        let result = format_tool_info("Bash", &input);
-        assert!(result.len() < 510);
-        assert!(result.ends_with('…'));
     }
 }
